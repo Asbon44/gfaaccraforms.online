@@ -238,16 +238,18 @@ textarea {
 .read-only input, 
 .read-only select, 
 .read-only textarea {
-    pointer-events: none;
-    background: #f8fafc;
-    border-color: #f1f5f9;
-    color: #003366;
-    font-weight: 600;
+    background: #f8fafc !important;
+    border-color: #f1f5f9 !important;
+    color: #003366 !important;
+    font-weight: 600 !important;
+    opacity: 1 !important; /* Force opacity for disabled items */
+    -webkit-text-fill-color: #003366 !important; /* Force text color on WebKit for disabled items */
+    cursor: default;
 }
 
 .read-only .checkbox-group, .read-only .radio-group {
     pointer-events: none;
-    opacity: 0.6;
+    opacity: 0.9 !important;
 }
 
 .readonly-banner {
