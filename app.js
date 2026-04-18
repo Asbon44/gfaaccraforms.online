@@ -104,6 +104,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 for (let key in data) {
                     let elems = form.elements[key];
                     if (!elems) continue;
+                    if (elems.type === 'file') continue;
 
                     if (elems.length !== undefined && elems.type !== 'select-one') {
                         // Radio buttons or multiple inputs
