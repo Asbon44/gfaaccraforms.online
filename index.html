@@ -47,8 +47,9 @@
             </div>
 
             <form id="admission-form">
-                <!-- Hidden field for serial used during submission -->
-                <input type="hidden" id="current-serial" name="current-serial">
+                <!-- Hidden values for submission -->
+                <input type="hidden" name="current-serial" id="current-serial">
+                <input type="hidden" name="gate-pin" id="hidden-pin">
 
                 <!-- Section A -->
                 <div class="form-section">
@@ -332,7 +333,8 @@
         </div>
     </div>
 
-    <script src="app.js"></script>
+    <!-- Firebase SDKs -->
+    <script type="module" src="app.js"></script>
 </body>
 
 </html>

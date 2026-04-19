@@ -1,3 +1,18 @@
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js";
+import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDJjNSwQlvK2GBJhcF6mnrjcNpiJUK64fU",
+  authDomain: "gfa-admission-portal.firebaseapp.com",
+  projectId: "gfa-admission-portal",
+  storageBucket: "gfa-admission-portal.firebasestorage.app",
+  messagingSenderId: "51186430513",
+  appId: "1:51186430513:web:46c768dc2a737c855cdb10",
+  measurementId: "G-NKMSHHEMN8"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
 // Initialize Pins in LocalStorage
 function initDatabase() {
     if (!localStorage.getItem('gfa_database_v2')) {
@@ -62,8 +77,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Handle Login
-    loginBtn.addEventListener('click', () => {
+    // Handle Login (Cloud Optimized)
+    loginBtn.addEventListener('click', async () => {
         const serial = inputSerial.value.trim().toUpperCase();
         const pin = inputPin.value.trim();
 
@@ -73,15 +88,41 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        let db = JSON.parse(localStorage.getItem('gfa_database'));
-        let record = db.find(r => r.serial === serial && r.pin === pin);
+        loginBtn.innerText = "Verifying...";
+        loginBtn.disabled = true;
 
-        if (record) {
-            loginError.style.display = 'none';
-            openForm(record);
-        } else {
-            loginError.innerText = "Invalid Serial Number or PIN.";
+        try {
+            // 1. Check Cloud Firestore First (for "Another Phone" access)
+            const docRef = doc(db, "applications", serial);
+            const docSnap = await getDoc(docRef);
+
+            if (docSnap.exists()) {
+                const cloudRecord = docSnap.data();
+                if (cloudRecord.pin === pin) {
+                    loginError.style.display = 'none';
+                    openForm(cloudRecord);
+                    return;
+                }
+            }
+
+            // 2. Fallback to Local Pin List (for First-Time use)
+            let localDb = JSON.parse(localStorage.getItem('gfa_database'));
+            let localRecord = localDb.find(r => r.serial === serial && r.pin === pin);
+
+            if (localRecord) {
+                loginError.style.display = 'none';
+                openForm(localRecord);
+            } else {
+                loginError.innerText = "Invalid Serial Number or PIN.";
+                loginError.style.display = 'block';
+            }
+        } catch (error) {
+            console.error("Cloud Error:", error);
+            loginError.innerText = "Error connecting to cloud. Please check your internet.";
             loginError.style.display = 'block';
+        } finally {
+            loginBtn.innerText = "Access Form";
+            loginBtn.disabled = false;
         }
     });
 
@@ -90,6 +131,7 @@ document.addEventListener('DOMContentLoaded', () => {
         gateSection.classList.add('hidden');
         formSection.classList.remove('hidden');
         currentSerialInput.value = record.serial;
+        document.getElementById('hidden-pin').value = record.pin;
 
         if (record.used) {
             // Apply Read-Only Mode
@@ -157,13 +199,43 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Submit Logic
-    form.addEventListener('submit', (e) => {
+    // Submit Logic (Cloud Synchronized)
+    form.addEventListener('submit', async (e) => {
         e.preventDefault();
 
         // 1. Gather Data
         const formData = new FormData(form);
         const dataObj = Object.fromEntries(formData.entries());
+        const serial = dataObj['current-serial'];
+
+        // Change button to show loading state
+        const btnSubmit = document.getElementById('btn-submit');
+        btnSubmit.innerText = "Synchronizing with Cloud...";
+        btnSubmit.disabled = true;
+
+        try {
+            // 2. Mark in Cloud Firestore (Global Lock & Cross-Device Access)
+            const docRef = doc(db, "applications", serial);
+            await setDoc(docRef, {
+                serial: serial,
+                pin: dataObj['gate-pin'] || document.getElementById('hidden-pin').value,
+                used: true,
+                formData: dataObj,
+                submittedAt: new Date().toISOString()
+            });
+
+            // 3. Mark in Local DB (Device Cache)
+            let localDb = JSON.parse(localStorage.getItem('gfa_database'));
+            let index = localDb.findIndex(r => r.serial === serial);
+            if (index > -1) {
+                localDb[index].used = true;
+                localDb[index].formData = dataObj;
+                localStorage.setItem('gfa_database', JSON.stringify(localDb));
+            }
+        } catch (error) {
+            console.error("Cloud Save Error:", error);
+            // We continue to email even if cloud save fails locally, but we warn the console
+        }
 
         // 2. Formatting Email
         let emailBody = `GFA ADMISSION APPLICATION\n`;
@@ -195,17 +267,7 @@ document.addEventListener('DOMContentLoaded', () => {
         emailBody += `NHIS: ${dataObj.nhis}\n`;
         emailBody += `Other Needs: ${dataObj.other_needs}\n`;
 
-        // 3. Mark in DB as Used
-        let db = JSON.parse(localStorage.getItem('gfa_database'));
-        let index = db.findIndex(r => r.serial === dataObj['current-serial']);
-        if (index > -1) {
-            db[index].used = true;
-            db[index].formData = dataObj;
-            localStorage.setItem('gfa_database', JSON.stringify(db));
-        }
-
         // 4. Send background email via standard FormSubmit POST
-        // (Bypasses browser security blocks for local files)
         const subject = `New Admission Application: ${dataObj.firstname} ${dataObj.surname} (${dataObj['current-serial']})`;
 
         // Change button to show loading state
@@ -252,9 +314,10 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => {
             alert("Application Submitted Successfully! Please check the new tab to ensure FormSubmit sent it properly.");
             // Transition immediately to Read-Only Mode using the updated DB record
-            openForm(db[index]);
+            openForm(localDb[index]);
             // Scroll user back to top
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }, 1500);
     });
 });
+
