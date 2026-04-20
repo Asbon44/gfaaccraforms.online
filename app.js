@@ -34,6 +34,34 @@ initDatabase();
     const fashionBgRadios = document.getElementsByName('first_time');
     const prevSchoolDiv = document.getElementById('previous-school-div');
     const currentSerialInput = document.getElementById('current-serial');
+    const passportInputEl = document.getElementById('passport-upload');
+
+    // iPhone Safari fix:
+    // Do NOT read the file (async) during submit, because Safari may block the submit
+    // when it's no longer a direct user gesture. Cache the image when the user selects it.
+    let cachedPassportDataUrl = null;
+    let cachedPassportFileName = null;
+    if (passportInputEl) {
+        passportInputEl.addEventListener('change', () => {
+            const file = passportInputEl.files && passportInputEl.files[0] ? passportInputEl.files[0] : null;
+            cachedPassportDataUrl = null;
+            cachedPassportFileName = null;
+            if (!file) return;
+            cachedPassportFileName = file.name;
+
+            try {
+                const reader = new FileReader();
+                reader.onload = () => { cachedPassportDataUrl = String(reader.result || ""); };
+                reader.onerror = () => {
+                    cachedPassportDataUrl = null;
+                    console.warn("Passport image could not be cached for download.");
+                };
+                reader.readAsDataURL(file);
+            } catch (e) {
+                cachedPassportDataUrl = null;
+            }
+        });
+    }
 
     // Toggle Previous School Field
     Array.from(fashionBgRadios).forEach(radio => {
@@ -289,7 +317,7 @@ initDatabase();
 
     // Submit Logic (Local-only used-once per device)
     let isFinalNativeSubmit = false;
-    form.addEventListener('submit', async (e) => {
+    form.addEventListener('submit', (e) => {
         // Second pass: allow the browser to submit normally (best reliability on mobile)
         if (isFinalNativeSubmit) return;
 
@@ -301,22 +329,9 @@ initDatabase();
         const serial = dataObj['current-serial'];
         const pin = document.getElementById('hidden-pin').value;
 
-        // Capture passport image so downloads/PDF include it (stored locally on this device)
-        const passportInputEl = document.getElementById('passport-upload');
-        const passportFile = passportInputEl && passportInputEl.files && passportInputEl.files[0] ? passportInputEl.files[0] : null;
-        if (passportFile) {
-            try {
-                dataObj._passportFileName = passportFile.name;
-                dataObj._passportDataUrl = await new Promise((resolve, reject) => {
-                    const reader = new FileReader();
-                    reader.onload = () => resolve(String(reader.result || ""));
-                    reader.onerror = () => reject(new Error("PASSPORT_READ_FAILED"));
-                    reader.readAsDataURL(passportFile);
-                });
-            } catch (err) {
-                console.warn("Passport image could not be saved for download:", err && err.message ? err.message : err);
-            }
-        }
+        // Attach cached passport image (if available) for downloads / PDF
+        if (cachedPassportFileName) dataObj._passportFileName = cachedPassportFileName;
+        if (cachedPassportDataUrl) dataObj._passportDataUrl = cachedPassportDataUrl;
 
         // Change button to show loading state
         const btnSubmit = document.getElementById('btn-submit');
@@ -335,6 +350,8 @@ initDatabase();
                 alert("This Serial Number has already been used on this device. Opening your submitted form in read-only mode.");
                 openForm(localDb[index]);
                 window.scrollTo({ top: 0, behavior: 'smooth' });
+                btnSubmit.innerText = "Submit Application";
+                btnSubmit.disabled = false;
                 return;
             }
 
@@ -351,6 +368,8 @@ initDatabase();
         } catch (error) {
             console.error("Local Save Error:", error);
             alert("Could not save on this device. Please refresh and try again.");
+            btnSubmit.innerText = "Submit Application";
+            btnSubmit.disabled = false;
             return;
         }
 
@@ -427,7 +446,7 @@ initDatabase();
         }
         inputCaptcha.value = "false";
 
-        // Trigger a real native submit (runs browser validation + works better on mobile)
+        // Trigger a real native submit (runs browser validation + works better on mobile, especially iPhone Safari)
         isFinalNativeSubmit = true;
         try {
             if (typeof form.requestSubmit === "function") {
