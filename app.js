@@ -387,49 +387,45 @@ initDatabase();
         btnSubmit.innerText = "Submitting...";
         btnSubmit.disabled = true;
 
-        // Build a temporary form to submit the data natively
-        const mailForm = document.createElement("form");
-        mailForm.method = "POST";
-        mailForm.action = "https://formsubmit.co/generalfashionacademyaccra@gmail.com";
-        mailForm.enctype = "multipart/form-data";
-        mailForm.target = "_blank"; // Open the formsubmit process in a new tab to handle captcha / verifications
+        // MOBILE RELIABLE SUBMIT:
+        // Submit the *existing* form directly (keeps the file input attached).
+        // Using _blank/new-tab is often blocked on mobile, so we submit in the same tab.
+        form.action = "https://formsubmit.co/generalfashionacademyaccra@gmail.com";
+        form.method = "POST";
+        form.enctype = "multipart/form-data";
+        form.target = "_self";
 
-        // Attach Passport Photo File Input to the mailForm
-        const passportInput = document.getElementById('passport-upload');
-        if (passportInput && passportInput.files.length > 0) {
-            // We append the original input node to the hidden form so it brings the file along!
-            mailForm.appendChild(passportInput);
+        // Ensure the extra FormSubmit fields exist in the real form
+        let inputSubject = form.querySelector('input[name="_subject"]');
+        if (!inputSubject) {
+            inputSubject = document.createElement("input");
+            inputSubject.type = "hidden";
+            inputSubject.name = "_subject";
+            form.appendChild(inputSubject);
         }
-
-        const inputSubject = document.createElement("input");
-        inputSubject.type = "hidden";
-        inputSubject.name = "_subject";
         inputSubject.value = subject;
-        mailForm.appendChild(inputSubject);
 
-        const inputData = document.createElement("input");
-        inputData.type = "hidden";
-        inputData.name = "Applicant Details";
+        let inputData = form.querySelector('input[name="Applicant Details"]');
+        if (!inputData) {
+            inputData = document.createElement("input");
+            inputData.type = "hidden";
+            inputData.name = "Applicant Details";
+            form.appendChild(inputData);
+        }
         inputData.value = emailBody;
-        mailForm.appendChild(inputData);
 
-        const inputCaptcha = document.createElement("input");
-        inputCaptcha.type = "hidden";
-        inputCaptcha.name = "_captcha";
+        let inputCaptcha = form.querySelector('input[name="_captcha"]');
+        if (!inputCaptcha) {
+            inputCaptcha = document.createElement("input");
+            inputCaptcha.type = "hidden";
+            inputCaptcha.name = "_captcha";
+            form.appendChild(inputCaptcha);
+        }
         inputCaptcha.value = "false";
-        mailForm.appendChild(inputCaptcha);
 
-        document.body.appendChild(mailForm);
-        mailForm.submit();
-
-        // Wait slightly for submission, then instantly convert to Read-Only Mode
-        setTimeout(() => {
-            alert("Application Submitted Successfully! Please check the new tab to ensure FormSubmit sent it properly.");
-            // Transition immediately to Read-Only Mode using the updated record
-            const viewRecord = (localDb && index > -1) ? localDb[index] : { serial, pin, used: true, formData: dataObj };
-            openForm(viewRecord);
-            // Scroll user back to top
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-        }, 1500);
+        // Lock UI and submit
+        btnSubmit.innerText = "Submitting...";
+        btnSubmit.disabled = true;
+        form.submit();
     });
 
