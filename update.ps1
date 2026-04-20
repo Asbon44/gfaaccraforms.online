@@ -34,52 +34,5 @@ $patternInit = '(?s)// Initialize Pins in LocalStorage\s*function initDatabase\(
 $newInitDbWithHeader = "// Initialize Pins in LocalStorage`r`n$newInitDb"
 $content = $content -replace $patternInit, $newInitDbWithHeader
 
-$patternFix1 = '(?s)// Populate data safely.*?\}\s*\}'
-$newFix1 = @"
-            // Populate data safely
-            let data = record.formData;
-            for (let key in data) {
-                let elems = form.elements[key];
-                if (!elems) continue;
-
-                if (elems.length !== undefined && elems.type !== 'select-one') {
-                    // Radio buttons or multiple inputs
-                    Array.from(elems).forEach(el => {
-                        if (el.value === data[key]) el.checked = true;
-                    });
-                } else {
-                    if (elems.type === 'checkbox') {
-                        elems.checked = (data[key] === true || data[key] === "on");
-                    } else {
-                        elems.value = data[key];
-                    }
-                }
-            }
-
-            // Fix read only mode
-            Array.from(form.elements).forEach(el => {
-                if (el.id !== 'btn-submit' && el.id !== 'current-serial') {
-                    el.disabled = true;
-                    if (el.type === 'checkbox' || el.type === 'radio' || el.type === 'file') {
-                        el.style.pointerEvents = 'none';
-                    }
-                }
-            });
-"@
-$content = $content -replace $patternFix1, $newFix1
-
-$patternFix2 = '(?s)const pUpload = document\.getElementById\(''passport-upload''\);.*?pUpload\.style\.background = "transparent";\r?\n\s*\}'
-$newFix2 = @"
-            const pUpload = document.getElementById('passport-upload');
-            if (pUpload) {
-                pUpload.type = "text";
-                pUpload.value = "Image stored securely.";
-                pUpload.style.border = "none";
-                pUpload.style.background = "transparent";
-                pUpload.disabled = true;
-            }
-"@
-$content = $content -replace $patternFix2, $newFix2
-
 [System.IO.File]::WriteAllText("c:\Users\kenne\OneDrive\Desktop\gfa accra forms\app.js", $content, [System.Text.Encoding]::UTF8)
 Write-Output "Update Successful"
