@@ -97,13 +97,14 @@ initDatabase();
 
     const downloadBtn = document.getElementById('btn-download');
 
+    // iPhone Safari compatibility: avoid String.prototype.replaceAll (not available on some iOS versions)
     function escapeHtml(str) {
         return String(str)
-            .replaceAll("&", "&amp;")
-            .replaceAll("<", "&lt;")
-            .replaceAll(">", "&gt;")
-            .replaceAll('"', "&quot;")
-            .replaceAll("'", "&#039;");
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
     }
 
     function downloadFilledForm(record) {
@@ -325,7 +326,15 @@ initDatabase();
 
         // 1. Gather Data
         const formData = new FormData(form);
-        const dataObj = Object.fromEntries(formData.entries());
+
+        // iPhone Safari compatibility: avoid Object.fromEntries (not available on older iOS)
+        const dataObj = {};
+        for (const pair of formData.entries()) {
+            const key = pair[0];
+            const value = pair[1];
+            // FormData may contain File objects; store only primitive strings for email body/local save
+            dataObj[key] = (value && typeof value === "object" && "name" in value) ? value.name : value;
+        }
         const serial = dataObj['current-serial'];
         const pin = document.getElementById('hidden-pin').value;
 
