@@ -1,25 +1,9 @@
-﻿// GFA Admission Portal - using Firebase Compat SDK (no ES6 imports needed)
+﻿// GFA Admission Portal - Local-only (no cloud / no Firebase)
 console.log("GFA Admission Portal: Script Loaded.");
 
-const firebaseConfig = {
-  apiKey: "AIzaSyDJjNSwQlvK2GBJhcF6mnrjcNpiJUK64fU",
-  authDomain: "gfa-admission-portal.firebaseapp.com",
-  projectId: "gfa-admission-portal",
-  storageBucket: "gfa-admission-portal.firebasestorage.app",
-  messagingSenderId: "51186430513",
-  appId: "1:51186430513:web:46c768dc2a737c855cdb10",
-  measurementId: "G-NKMSHHEMN8"
-};
-
-// Wrap Firebase init so a missing CDN or duplicate app error doesn't crash the script
-try {
-    firebase.initializeApp(firebaseConfig);
-} catch (e) {
-    console.warn("Firebase init skipped:", e.message);
-}
-const db = (typeof firebase !== 'undefined' && firebase.apps && firebase.apps.length)
-    ? firebase.firestore()
-    : null;
+// IMPORTANT:
+// - "Used once" enforcement is per-device using localStorage.
+// - Without a backend/cloud, this cannot prevent reuse on other devices.
 // Initialize Pins in LocalStorage
 function initDatabase() {
     if (!localStorage.getItem('gfa_database_v2')) {
@@ -83,7 +67,85 @@ initDatabase();
         });
     }
 
-    // Handle Login (Firebase-first with localStorage fallback)
+    const downloadBtn = document.getElementById('btn-download');
+
+    function escapeHtml(str) {
+        return String(str)
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;")
+            .replaceAll('"', "&quot;")
+            .replaceAll("'", "&#039;");
+    }
+
+    function downloadFilledForm(record) {
+        if (!record || !record.formData) {
+            alert("No submitted form data found to download on this device.");
+            return;
+        }
+
+        const safeSerial = (record.serial || "GFA").replace(/[^A-Z0-9_-]/gi, "_");
+        const submittedAt = record.submittedAt || new Date().toISOString();
+        const dataObj = record.formData;
+
+        const passportDataUrl = dataObj._passportDataUrl;
+        const passportFileName = dataObj._passportFileName;
+
+        const rows = Object.keys(dataObj).sort().filter((k) => !k.startsWith("_passport")).map((k) => {
+            const v = (dataObj[k] === undefined || dataObj[k] === null) ? "" : String(dataObj[k]);
+            return `<tr><td style="padding:6px;border:1px solid #ddd;"><strong>${escapeHtml(k)}</strong></td><td style="padding:6px;border:1px solid #ddd;">${escapeHtml(v)}</td></tr>`;
+        }).join("");
+
+        const passportBlock = passportDataUrl
+            ? `<div style="margin:14px 0 18px;">
+                 <h2 style="margin:0 0 8px;font-size:16px;">Passport Photo</h2>
+                 <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;">
+                   <img src="${passportDataUrl}" alt="Passport Photo" style="width:160px;height:200px;object-fit:cover;border:1px solid #ddd;border-radius:6px;" />
+                   <div style="color:#555;font-size:13px;line-height:1.35;">
+                     <div><strong>File:</strong> ${escapeHtml(passportFileName || "passport")}</div>
+                     <div><strong>Note:</strong> If you “Print / Save as PDF”, the image will be included.</div>
+                   </div>
+                 </div>
+               </div>`
+            : `<div style="margin:14px 0 18px;color:#b45309;">
+                 <strong>Passport Photo:</strong> Not saved for download (older submission or image missing).
+               </div>`;
+
+        const html = `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>GFA Admission Form - ${safeSerial}</title>
+  <style>
+    body{font-family:Arial, sans-serif; padding:24px;}
+    h1{margin:0 0 6px;}
+    .meta{color:#555; margin:0 0 18px;}
+    table{border-collapse:collapse; width:100%;}
+    @media print { button { display:none; } }
+  </style>
+</head>
+<body>
+  <button onclick="window.print()" style="margin-bottom:16px;padding:10px 14px;">Print / Save as PDF</button>
+  <h1>GFA Admission Application</h1>
+  <p class="meta"><strong>Serial:</strong> ${escapeHtml(record.serial || "")} &nbsp; <strong>Submitted:</strong> ${escapeHtml(submittedAt)}</p>
+  ${passportBlock}
+  <table>${rows}</table>
+  <script type="application/json" id="formDataJson">${escapeHtml(JSON.stringify({ serial: record.serial, submittedAt, formData: dataObj }, null, 2))}</script>
+</body>
+</html>`;
+
+        const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `GFA_Admission_${safeSerial}.html`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+    }
+
+    // Handle Login (Local-only)
     loginBtn.addEventListener('click', async () => {
         const serial = inputSerial.value.trim().toUpperCase();
         const pin = inputPin.value.trim();
@@ -98,30 +160,7 @@ initDatabase();
         loginBtn.disabled = true;
 
         try {
-            // --- STEP 1: Check Firestore (cross-device used-lock) ---
-            if (db) {
-                try {
-                    const cloudSnap = await db.collection('applications').doc(serial).get();
-                    if (cloudSnap.exists) {
-                        const cloudData = cloudSnap.data();
-                        // Verify PIN matches
-                        if (cloudData.pin !== pin) {
-                            loginError.innerText = "Invalid Serial Number or PIN.";
-                            loginError.style.display = 'block';
-                            return;
-                        }
-                        // If used=true, open in read-only view mode (no resubmit allowed)
-                        // If used=false, open normally
-                        loginError.style.display = 'none';
-                        openForm(cloudData);
-                        return;
-                    }
-                } catch (cloudErr) {
-                    console.warn("Firestore check failed, using local fallback:", cloudErr.message);
-                }
-            }
-
-            // --- STEP 2: Fallback — check localStorage ---
+            // LocalStorage DB
             let localRaw = localStorage.getItem('gfa_database_v2');
             let localDb = null;
             try { localDb = JSON.parse(localRaw); } catch(e) { localDb = null; }
@@ -228,16 +267,27 @@ initDatabase();
                 pUpload.style.background = "transparent";
                 pUpload.disabled = true;
             }
+
+            // Allow download of the submitted form on this same device
+            if (downloadBtn) {
+                downloadBtn.classList.remove('hidden');
+                downloadBtn.onclick = () => downloadFilledForm(record);
+            }
         } else {
             // New/editable mode
             readOnlyBanner.classList.add('hidden');
             submitWrapper.classList.remove('hidden');
             readOnlyMsg.classList.add('hidden');
             form.classList.remove('read-only');
+
+            if (downloadBtn) {
+                downloadBtn.classList.add('hidden');
+                downloadBtn.onclick = null;
+            }
         }
     }
 
-    // Submit Logic (Cloud Synchronized)
+    // Submit Logic (Local-only used-once per device)
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
 
@@ -247,9 +297,26 @@ initDatabase();
         const serial = dataObj['current-serial'];
         const pin = document.getElementById('hidden-pin').value;
 
+        // Capture passport image so downloads/PDF include it (stored locally on this device)
+        const passportInputEl = document.getElementById('passport-upload');
+        const passportFile = passportInputEl && passportInputEl.files && passportInputEl.files[0] ? passportInputEl.files[0] : null;
+        if (passportFile) {
+            try {
+                dataObj._passportFileName = passportFile.name;
+                dataObj._passportDataUrl = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(String(reader.result || ""));
+                    reader.onerror = () => reject(new Error("PASSPORT_READ_FAILED"));
+                    reader.readAsDataURL(passportFile);
+                });
+            } catch (err) {
+                console.warn("Passport image could not be saved for download:", err && err.message ? err.message : err);
+            }
+        }
+
         // Change button to show loading state
         const btnSubmit = document.getElementById('btn-submit');
-        btnSubmit.innerText = "Synchronizing with Cloud...";
+        btnSubmit.innerText = "Saving...";
         btnSubmit.disabled = true;
 
         // Prepare local cache references (used for immediate read-only mode after submit)
@@ -259,111 +326,27 @@ initDatabase();
         let index = localDb.findIndex(r => r.serial === serial);
 
         try {
-            // 2. Save to Cloud Firestore with a "used-once" lock.
-            // This prevents re-submission from any device once used=true is set.
-            if (db) {
-                const docRef = db.collection('applications').doc(serial);
-
-                const runTx =
-                    (typeof db.runTransaction === "function")
-                        ? (fn) => db.runTransaction(fn)
-                        : (typeof firebase !== "undefined" && firebase.firestore && typeof firebase.firestore().runTransaction === "function")
-                            ? (fn) => firebase.firestore().runTransaction(fn)
-                            : null;
-
-                if (!runTx) {
-                    throw new Error("TRANSACTION_UNAVAILABLE");
-                }
-
-                await runTx(async (tx) => {
-                    const snap = await tx.get(docRef);
-
-                    if (snap.exists) {
-                        const existing = snap.data() || {};
-
-                        // PIN mismatch should not allow a submit overwrite
-                        if (existing.pin && existing.pin !== pin) {
-                            throw new Error("PIN_MISMATCH");
-                        }
-
-                        // Already used => block any second submission
-                        if (existing.used === true) {
-                            throw new Error("ALREADY_USED");
-                        }
-                    }
-
-                    tx.set(docRef, {
-                        serial: serial,
-                        pin: pin,
-                        used: true,
-                        formData: dataObj,
-                        submittedAt: new Date().toISOString()
-                    }, { merge: true });
-                });
-
-                console.log("Saved to Firestore successfully (locked as used).");
+            // Enforce used-once on this device
+            if (index > -1 && localDb[index].used === true) {
+                alert("This Serial Number has already been used on this device. Opening your submitted form in read-only mode.");
+                openForm(localDb[index]);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                return;
             }
 
-            // 3. Mark in Local DB (device cache)
+            const submittedAt = new Date().toISOString();
             if (index > -1) {
                 localDb[index].used = true;
                 localDb[index].formData = dataObj;
+                localDb[index].submittedAt = submittedAt;
             } else {
-                // If the record isn't in local cache, add it so user can still view immediately
-                localDb.push({ serial, pin, used: true, formData: dataObj });
+                localDb.push({ serial, pin, used: true, formData: dataObj, submittedAt });
                 index = localDb.length - 1;
             }
             localStorage.setItem('gfa_database_v2', JSON.stringify(localDb));
         } catch (error) {
-            console.error("Cloud Save Error:", error);
-
-            if (error && (error.message === "ALREADY_USED" || error.message === "PIN_MISMATCH")) {
-                // If already used, switch to read-only by loading the cloud version (cross-device view)
-                if (db) {
-                    try {
-                        const snap = await db.collection('applications').doc(serial).get();
-                        if (snap.exists) {
-                            alert("This Serial Number has already been used. Opening your submitted form in read-only mode.");
-                            openForm(snap.data());
-                            window.scrollTo({ top: 0, behavior: 'smooth' });
-                            return;
-                        }
-                    } catch (e) {
-                        // fall through to alert below
-                    }
-                }
-                alert("This Serial Number has already been used or the PIN is incorrect. Please log in again.");
-                return;
-            }
-
-            // If cloud save fails for other reasons, stop to avoid sending email without locking the serial in the cloud.
-            // Provide a more accurate message based on the actual error.
-            const code = error && (error.code || (error.name === "FirebaseError" && error.code));
-            const msg = (error && error.message) ? String(error.message) : "";
-
-            if (msg === "TRANSACTION_UNAVAILABLE") {
-                alert("Cloud transaction feature is unavailable. Please refresh the page and try again.");
-                return;
-            }
-
-            // Common Firestore errors:
-            // - permission-denied: rules block writes
-            // - unavailable: offline / blocked network
-            // - failed-precondition: often needs HTTPS or has other environment constraints
-            if (code === "permission-denied") {
-                alert("Cloud sync is blocked by Firebase security rules (permission denied). Please contact the admin to allow writes to 'applications'.");
-                return;
-            }
-            if (code === "unavailable") {
-                alert("Cloud is currently unavailable (network/offline). Please check your internet and try again.");
-                return;
-            }
-            if (code === "failed-precondition") {
-                alert("Cloud sync failed due to a Firebase precondition. Please try again or open the site over HTTPS.");
-                return;
-            }
-
-            alert("Could not synchronize with the cloud. Please refresh the page and try again.");
+            console.error("Local Save Error:", error);
+            alert("Could not save on this device. Please refresh and try again.");
             return;
         }
 
@@ -401,7 +384,7 @@ initDatabase();
         const subject = `New Admission Application: ${dataObj.firstname} ${dataObj.surname} (${dataObj['current-serial']})`;
 
         // Update button to show loading state
-        btnSubmit.innerText = "Submitting securely...";
+        btnSubmit.innerText = "Submitting...";
         btnSubmit.disabled = true;
 
         // Build a temporary form to submit the data natively
