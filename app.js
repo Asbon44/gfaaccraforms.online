@@ -288,7 +288,11 @@ initDatabase();
     }
 
     // Submit Logic (Local-only used-once per device)
+    let isFinalNativeSubmit = false;
     form.addEventListener('submit', async (e) => {
+        // Second pass: allow the browser to submit normally (best reliability on mobile)
+        if (isFinalNativeSubmit) return;
+
         e.preventDefault();
 
         // 1. Gather Data
@@ -423,9 +427,17 @@ initDatabase();
         }
         inputCaptcha.value = "false";
 
-        // Lock UI and submit
-        btnSubmit.innerText = "Submitting...";
-        btnSubmit.disabled = true;
-        form.submit();
+        // Trigger a real native submit (runs browser validation + works better on mobile)
+        isFinalNativeSubmit = true;
+        try {
+            if (typeof form.requestSubmit === "function") {
+                form.requestSubmit();
+            } else {
+                form.submit();
+            }
+        } finally {
+            // If navigation is blocked for any reason, allow retry
+            setTimeout(() => { isFinalNativeSubmit = false; }, 2500);
+        }
     });
 
