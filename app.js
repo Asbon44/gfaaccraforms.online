@@ -1,4 +1,4 @@
-﻿// GFA Admission Portal - Local-only (no cloud / no Firebase)
+// GFA Admission Portal - Local-only (no cloud / no Firebase)
 console.log("GFA Admission Portal: Script Loaded.");
 
 // IMPORTANT:
@@ -316,18 +316,24 @@ initDatabase();
         }
     }
 
-    // Submit Logic (Local-only used-once per device)
-    let isFinalNativeSubmit = false;
+    // Submit Logic (Mobile-Optimized)
+    let isFinalSubmit = false;
     form.addEventListener('submit', (e) => {
-        // Second pass: allow the browser to submit normally (best reliability on mobile)
-        if (isFinalNativeSubmit) return;
+        // If this is the second pass, let the browser handle it naturally
+        if (isFinalSubmit) return;
 
+        // First pass: capture data and save locally
         e.preventDefault();
 
-        // 1. Gather Data
-        const formData = new FormData(form);
+        const btnSubmit = document.getElementById('btn-submit');
+        if (!btnSubmit) return;
 
-        // iPhone Safari compatibility: avoid Object.fromEntries (not available on older iOS)
+        // Visual feedback (Avoid .disabled = true here as it can block submission on some mobile browsers)
+        btnSubmit.innerText = "Processing...";
+        btnSubmit.style.pointerEvents = "none";
+        btnSubmit.style.opacity = "0.7";
+
+        const formData = new FormData(form);
         const dataObj = {};
         for (const pair of formData.entries()) {
             const key = pair[0];
@@ -335,22 +341,23 @@ initDatabase();
             // FormData may contain File objects; store only primitive strings for email body/local save
             dataObj[key] = (value && typeof value === "object" && "name" in value) ? value.name : value;
         }
-        const serial = dataObj['current-serial'];
-        const pin = document.getElementById('hidden-pin').value;
+
+        const serial = dataObj['current-serial'] || "";
+        const pin = document.getElementById('hidden-pin').value || "";
 
         // Attach cached passport image (if available) for downloads / PDF
-        if (cachedPassportFileName) dataObj._passportFileName = cachedPassportFileName;
-        if (cachedPassportDataUrl) dataObj._passportDataUrl = cachedPassportDataUrl;
+        if (typeof cachedPassportFileName !== 'undefined' && cachedPassportFileName) dataObj._passportFileName = cachedPassportFileName;
+        if (typeof cachedPassportDataUrl !== 'undefined' && cachedPassportDataUrl) dataObj._passportDataUrl = cachedPassportDataUrl;
 
-        // Change button to show loading state
-        const btnSubmit = document.getElementById('btn-submit');
-        btnSubmit.innerText = "Saving...";
-        btnSubmit.disabled = true;
-
-        // Prepare local cache references (used for immediate read-only mode after submit)
-        let localDb = null;
-        try { localDb = JSON.parse(localStorage.getItem('gfa_database_v2') || '[]'); } catch (e) { localDb = []; }
+        // Prepare local cache references
+        let localDb = [];
+        try { 
+            localDb = JSON.parse(localStorage.getItem('gfa_database_v2') || '[]'); 
+        } catch (err) { 
+            localDb = []; 
+        }
         if (!Array.isArray(localDb)) localDb = [];
+        
         let index = localDb.findIndex(r => r.serial === serial);
 
         try {
@@ -359,8 +366,10 @@ initDatabase();
                 alert("This Serial Number has already been used on this device. Opening your submitted form in read-only mode.");
                 openForm(localDb[index]);
                 window.scrollTo({ top: 0, behavior: 'smooth' });
+                // Reset button
                 btnSubmit.innerText = "Submit Application";
-                btnSubmit.disabled = false;
+                btnSubmit.style.pointerEvents = "auto";
+                btnSubmit.style.opacity = "1";
                 return;
             }
 
@@ -371,72 +380,72 @@ initDatabase();
                 localDb[index].submittedAt = submittedAt;
             } else {
                 localDb.push({ serial, pin, used: true, formData: dataObj, submittedAt });
-                index = localDb.length - 1;
             }
             localStorage.setItem('gfa_database_v2', JSON.stringify(localDb));
         } catch (error) {
             console.error("Local Save Error:", error);
-            alert("Could not save on this device. Please refresh and try again.");
+            alert("Local storage error. Please ensure you have enough space and try again.");
             btnSubmit.innerText = "Submit Application";
-            btnSubmit.disabled = false;
+            btnSubmit.style.pointerEvents = "auto";
+            btnSubmit.style.opacity = "1";
             return;
         }
 
-        // 2. Formatting Email
+        // Prepare FormSubmit fields
         let emailBody = `GFA ADMISSION APPLICATION\n`;
-        emailBody += `Serial Number: ${dataObj['current-serial']}\n\n`;
+        emailBody += `Serial Number: ${serial}\n\n`;
         emailBody += `--- SECTION A: PARTICULARS ---\n`;
-        emailBody += `Name: ${dataObj.surname}, ${dataObj.firstname} ${dataObj.othernames}\n`;
-        emailBody += `Gender: ${dataObj.gender}\n`;
-        emailBody += `DOB / POB: ${dataObj.dob} / ${dataObj.pob}\n`;
-        emailBody += `Hometown: ${dataObj.hometown}\n`;
-        emailBody += `Religion: ${dataObj.religion}\n`;
-        emailBody += `Status: ${dataObj.residential}\n\n`;
+        emailBody += `Name: ${dataObj.surname || ''}, ${dataObj.firstname || ''} ${dataObj.othernames || ''}\n`;
+        emailBody += `Gender: ${dataObj.gender || ''}\n`;
+        emailBody += `DOB / POB: ${dataObj.dob || ''} / ${dataObj.pob || ''}\n`;
+        emailBody += `Hometown: ${dataObj.hometown || ''}\n`;
+        emailBody += `Religion: ${dataObj.religion || ''}\n`;
+        emailBody += `Status: ${dataObj.residential || ''}\n\n`;
 
         emailBody += `--- SECTION B: CONTACT & BACKGROUND ---\n`;
-        emailBody += `Address: ${dataObj.contact_address}\n`;
-        emailBody += `Living Situation: ${dataObj.living_situation}\n`;
-        emailBody += `First Time in Fashion Center?: ${dataObj.first_time}\n`;
+        emailBody += `Address: ${dataObj.contact_address || ''}\n`;
+        emailBody += `Living Situation: ${dataObj.living_situation || ''}\n`;
+        emailBody += `First Time in Fashion Center?: ${dataObj.first_time || ''}\n`;
         if (dataObj.first_time === 'No') {
-            emailBody += `Previous School: ${dataObj.previous_school}\n`;
+            emailBody += `Previous School: ${dataObj.previous_school || ''}\n`;
         }
 
         emailBody += `\n--- SECTION C: FAMILY ---\n`;
-        emailBody += `Father: ${dataObj.father_name} (${dataObj.father_phone}) - ${dataObj.father_job}\n`;
-        emailBody += `Mother: ${dataObj.mother_name} (${dataObj.mother_phone}) - ${dataObj.mother_job}\n`;
-        emailBody += `Emergency Contact: ${dataObj.emergency_name} (${dataObj.emergency_phone})\n\n`;
+        emailBody += `Father: ${dataObj.father_name || ''} (${dataObj.father_phone || ''}) - ${dataObj.father_job || ''}\n`;
+        emailBody += `Mother: ${dataObj.mother_name || ''} (${dataObj.mother_phone || ''}) - ${dataObj.mother_job || ''}\n`;
+        emailBody += `Emergency Contact: ${dataObj.emergency_name || ''} (${dataObj.emergency_phone || ''})\n\n`;
 
         emailBody += `--- SECTION D: MEDICAL ---\n`;
-        emailBody += `Doctor: ${dataObj.doctor_name} (${dataObj.doctor_phone})\n`;
-        emailBody += `Asthma: ${dataObj.asthma}\n`;
-        emailBody += `NHIS: ${dataObj.nhis}\n`;
-        emailBody += `Other Needs: ${dataObj.other_needs}\n`;
+        emailBody += `Doctor: ${dataObj.doctor_name || ''} (${dataObj.doctor_phone || ''})\n`;
+        emailBody += `Asthma: ${dataObj.asthma || ''}\n`;
+        emailBody += `NHIS: ${dataObj.nhis || ''}\n`;
+        emailBody += `Other Needs: ${dataObj.other_needs || ''}\n`;
 
-        // 4. Send background email via standard FormSubmit POST
-        const subject = `New Admission Application: ${dataObj.firstname} ${dataObj.surname} (${dataObj['current-serial']})`;
-
-        // Update button to show loading state
-        btnSubmit.innerText = "Submitting...";
-        btnSubmit.disabled = true;
-
-        // Populate FormSubmit hidden fields (defined in index.html)
+        const subject = `New Admission Application: ${dataObj.firstname || 'Applicant'} ${dataObj.surname || ''} (${serial})`;
+        
         const fsSubject = document.getElementById('fs-subject');
         if (fsSubject) fsSubject.value = subject;
 
         const fsDetails = document.getElementById('fs-details');
         if (fsDetails) fsDetails.value = emailBody;
 
-        // Trigger a real native submit (runs browser validation + works better on mobile, especially iPhone Safari)
-        isFinalNativeSubmit = true;
-        try {
-            if (typeof form.requestSubmit === "function") {
-                form.requestSubmit();
-            } else {
-                form.submit();
-            }
-        } finally {
-            // If navigation is blocked for any reason, allow retry
-            setTimeout(() => { isFinalNativeSubmit = false; }, 2500);
+        // Final Native Submission
+        isFinalSubmit = true;
+        btnSubmit.innerText = "Submitting...";
+
+        if (typeof form.requestSubmit === "function") {
+            // Modern browsers (including recent iOS/Android)
+            form.requestSubmit();
+        } else {
+            // Fallback for older browsers
+            form.submit();
         }
+
+        // Safety timeout to allow retry if the browser stays on the same page
+        setTimeout(() => {
+            isFinalSubmit = false;
+            btnSubmit.style.pointerEvents = "auto";
+            btnSubmit.style.opacity = "1";
+        }, 5000);
     });
 
