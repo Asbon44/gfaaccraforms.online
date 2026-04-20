@@ -264,7 +264,18 @@ initDatabase();
             if (db) {
                 const docRef = db.collection('applications').doc(serial);
 
-                await db.runTransaction(async (tx) => {
+                const runTx =
+                    (typeof db.runTransaction === "function")
+                        ? (fn) => db.runTransaction(fn)
+                        : (typeof firebase !== "undefined" && firebase.firestore && typeof firebase.firestore().runTransaction === "function")
+                            ? (fn) => firebase.firestore().runTransaction(fn)
+                            : null;
+
+                if (!runTx) {
+                    throw new Error("TRANSACTION_UNAVAILABLE");
+                }
+
+                await runTx(async (tx) => {
                     const snap = await tx.get(docRef);
 
                     if (snap.exists) {
@@ -326,7 +337,33 @@ initDatabase();
             }
 
             // If cloud save fails for other reasons, stop to avoid sending email without locking the serial in the cloud.
-            alert("Could not synchronize with the cloud. Please check your internet and try again.");
+            // Provide a more accurate message based on the actual error.
+            const code = error && (error.code || (error.name === "FirebaseError" && error.code));
+            const msg = (error && error.message) ? String(error.message) : "";
+
+            if (msg === "TRANSACTION_UNAVAILABLE") {
+                alert("Cloud transaction feature is unavailable. Please refresh the page and try again.");
+                return;
+            }
+
+            // Common Firestore errors:
+            // - permission-denied: rules block writes
+            // - unavailable: offline / blocked network
+            // - failed-precondition: often needs HTTPS or has other environment constraints
+            if (code === "permission-denied") {
+                alert("Cloud sync is blocked by Firebase security rules (permission denied). Please contact the admin to allow writes to 'applications'.");
+                return;
+            }
+            if (code === "unavailable") {
+                alert("Cloud is currently unavailable (network/offline). Please check your internet and try again.");
+                return;
+            }
+            if (code === "failed-precondition") {
+                alert("Cloud sync failed due to a Firebase precondition. Please try again or open the site over HTTPS.");
+                return;
+            }
+
+            alert("Could not synchronize with the cloud. Please refresh the page and try again.");
             return;
         }
 
