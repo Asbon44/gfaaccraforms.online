@@ -3,14 +3,14 @@ const fs = require('fs');
 const generatePins = () => {
     const pins = [];
     for (let i = 0; i < 1000; i++) {
-        const serialNumber = 'GFA-' + (10000 + i).toString();
+        const serial = 'GFA-' + (10000 + i).toString();
         // Generate a random 6-digit pin
         const pin = Math.floor(100000 + Math.random() * 900000).toString();
         pins.push({
-            serialNumber,
+            serial,
             pin,
             used: false,
-            data: null
+            formData: null
         });
     }
     

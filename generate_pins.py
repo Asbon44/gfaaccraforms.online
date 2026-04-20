@@ -4,10 +4,12 @@ import random
 pins = []
 for i in range(1000):
     serialNumber = f"GFA-{10000 + i}"
-    pin = str(random.randint(100000, 999999))
+    pin = f"{random.randint(0, 999999):06d}"
     pins.append({
-        "serialNumber": serialNumber,
-        "pin": pin
+        "serial": serialNumber,
+        "pin": pin,
+        "used": False,
+        "formData": None
     })
 
 file_content = f"const GFA_PINS = {json.dumps(pins, indent=2)};"

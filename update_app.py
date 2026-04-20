@@ -1,100 +1,51 @@
 import sys
-import json
-import re
+import os
 
-with open('data.csv', 'r') as f:
-    lines = f.read().strip().split('\n')
+filepath = r'c:\Users\kenne\OneDrive\Desktop\gfa accra forms\app.js'
 
-pins = []
-for line in lines:
-    if line.strip():
-        parts = line.split(',')
-        if len(parts) == 2:
-            serial, pin = parts[0].strip(), parts[1].strip()
-            pins.append({"serial": serial, "pin": pin, "used": False, "formData": None})
+with open(filepath, 'r', encoding='utf-8') as f:
+    lines = f.readlines()
 
-pins_json = json.dumps(pins, indent=4)
-pins_json_indented = pins_json.replace('\n', '\n        ')
+# Replace initDatabase function (lines 20 to 27)
+# 0-indexed: lines[19] to lines[26]
+new_function = [
+    "function initDatabase() {\n",
+    "    if (!localStorage.getItem('gfa_database_v2')) {\n",
+    "        if (typeof GFA_PINS !== 'undefined') {\n",
+    "            localStorage.setItem('gfa_database_v2', JSON.stringify(GFA_PINS));\n",
+    "            console.log('Database initialized from pins.js');\n",
+    "        } else {\n",
+    "            console.error('GFA_PINS not found! Please check pins.js');\n",
+    "        }\n",
+    "    }\n",
+    "}\n"
+]
 
-new_init_db = f"""function initDatabase() {{
-    if (!localStorage.getItem('gfa_database')) {{
-        let pins = {pins_json_indented};
-        localStorage.setItem('gfa_database', JSON.stringify(pins));
-        console.log("Database initialized with " + pins.length + " pins.");
-    }}
-}}"""
+# We need to find the exact range.
+# Let's search for "function initDatabase() {" and the closing "}" for that block.
+start_idx = -1
+for i, line in enumerate(lines):
+    if "function initDatabase() {" in line:
+        start_idx = i
+        break
 
-with open('app.js', 'r', encoding='utf-8') as f:
-    content = f.read()
-
-# Replace initDatabase
-content = re.sub(r'function initDatabase\(\) \{[\s\S]*?\}\s*\}\n', new_init_db + "\n", content, count=1)
-
-
-fix_code = """            // Populate data safely
-            let data = record.formData;
-            for (let key in data) {
-                let elems = form.elements[key];
-                if (!elems) continue;
-
-                if (elems.length !== undefined && elems.type !== 'select-one') {
-                    // Radio buttons or multiple inputs
-                    Array.from(elems).forEach(el => {
-                        if (el.value === data[key]) el.checked = true;
-                    });
-                } else {
-                    if (elems.type === 'checkbox') {
-                        elems.checked = (data[key] === true || data[key] === "on");
-                    } else {
-                        elems.value = data[key];
-                    }
-                }
-            }
-
-            // Fix read only mode
-            Array.from(form.elements).forEach(el => {
-                if (el.id !== 'btn-submit') {
-                    el.disabled = true;
-                }
-            });"""
-
-content = content.replace("""            // Populate data safely
-            let data = record.formData;
-            for (let key in data) {
-                let elems = form.elements[key];
-                if (!elems) continue;
-
-                if (elems.length !== undefined && elems.type !== 'select-one') {
-                    // Radio buttons or multiple inputs
-                    Array.from(elems).forEach(el => {
-                        if (el.value === data[key]) el.checked = true;
-                    });
-                } else {
-                    if (elems.type === 'checkbox') {
-                        elems.checked = (data[key] === true || data[key] === "on");
-                    } else {
-                        elems.value = data[key];
-                    }
-                }
-            }""", fix_code)
-
-
-content = content.replace("""            const pUpload = document.getElementById('passport-upload');
-            if (pUpload) {
-                pUpload.type = "text";
-                pUpload.value = "Image stored securely.";
-                pUpload.style.border = "none";
-                pUpload.style.background = "transparent";
-            }""", """            const pUpload = document.getElementById('passport-upload');
-            if (pUpload) {
-                pUpload.type = "text";
-                pUpload.value = "Image stored securely.";
-                pUpload.style.border = "none";
-                pUpload.style.background = "transparent";
-                pUpload.disabled = true;
-            }""")
-
-with open('app.js', 'w', encoding='utf-8') as f:
-    f.write(content)
-
-print("Updated app.js")
+if start_idx != -1:
+    # Find the end of the function. It ends at the next "}" that is not indented.
+    # Actually, let's just find the next line that is exactly "}" at the start.
+    end_idx = -1
+    for i in range(start_idx + 1, len(lines)):
+        if lines[i].strip() == "}":
+            end_idx = i
+            break
+    
+    if end_idx != -1:
+        # Perform replacement
+        lines[start_idx:end_idx+1] = new_function
+        
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.writelines(lines)
+        print(f"Successfully updated app.js. Replaced lines {start_idx+1} to {end_idx+1}.")
+    else:
+        print("Could not find end of initDatabase function.")
+else:
+    print("Could not find initDatabase function.")

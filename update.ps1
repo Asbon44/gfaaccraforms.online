@@ -18,10 +18,21 @@ foreach ($line in $csvDataLines) {
 
 $pinsJson = $pins | ConvertTo-Json -Depth 5 -Compress
 
-$newInitDb = "function initDatabase() {`r`n    if (!localStorage.getItem('gfa_database_v2')) {`r`n        let pins = $pinsJson;`r`n        localStorage.setItem('gfa_database', JSON.stringify(pins));`r`n        localStorage.setItem('gfa_database_v2', 'true');`r`n        console.log('Database initialized with ' + pins.length + ' pins.');`r`n    }`r`n}"
+$newInitDb = @"
+function initDatabase() {
+    if (!localStorage.getItem('gfa_database_v2')) {
+        let pins = $pinsJson;
+        localStorage.setItem('gfa_database_v2', JSON.stringify(pins));
+        console.log('Database initialized with ' + pins.length + ' pins.');
+    }
+}
+"@
 
-$patternInit = '(?s)function initDatabase\(\)\s*\{.*?\}\r?\n\}'
-$content = $content -replace $patternInit, $newInitDb
+# Replace the whole initDatabase block (including its header comment),
+# so the regex stays stable even if the function body changes.
+$patternInit = '(?s)// Initialize Pins in LocalStorage\s*function initDatabase\(\)\s*\{.*?\n\}'
+$newInitDbWithHeader = "// Initialize Pins in LocalStorage`r`n$newInitDb"
+$content = $content -replace $patternInit, $newInitDbWithHeader
 
 $patternFix1 = '(?s)// Populate data safely.*?\}\s*\}'
 $newFix1 = @"
