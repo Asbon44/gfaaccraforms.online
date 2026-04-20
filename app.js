@@ -410,41 +410,12 @@ initDatabase();
         btnSubmit.innerText = "Submitting...";
         btnSubmit.disabled = true;
 
-        // MOBILE RELIABLE SUBMIT:
-        // Submit the *existing* form directly (keeps the file input attached).
-        // Using _blank/new-tab is often blocked on mobile, so we submit in the same tab.
-        form.action = "https://formsubmit.co/generalfashionacademyaccra@gmail.com";
-        form.method = "POST";
-        form.enctype = "multipart/form-data";
-        form.target = "_self";
+        // Populate FormSubmit hidden fields (defined in index.html)
+        const fsSubject = document.getElementById('fs-subject');
+        if (fsSubject) fsSubject.value = subject;
 
-        // Ensure the extra FormSubmit fields exist in the real form
-        let inputSubject = form.querySelector('input[name="_subject"]');
-        if (!inputSubject) {
-            inputSubject = document.createElement("input");
-            inputSubject.type = "hidden";
-            inputSubject.name = "_subject";
-            form.appendChild(inputSubject);
-        }
-        inputSubject.value = subject;
-
-        let inputData = form.querySelector('input[name="Applicant Details"]');
-        if (!inputData) {
-            inputData = document.createElement("input");
-            inputData.type = "hidden";
-            inputData.name = "Applicant Details";
-            form.appendChild(inputData);
-        }
-        inputData.value = emailBody;
-
-        let inputCaptcha = form.querySelector('input[name="_captcha"]');
-        if (!inputCaptcha) {
-            inputCaptcha = document.createElement("input");
-            inputCaptcha.type = "hidden";
-            inputCaptcha.name = "_captcha";
-            form.appendChild(inputCaptcha);
-        }
-        inputCaptcha.value = "false";
+        const fsDetails = document.getElementById('fs-details');
+        if (fsDetails) fsDetails.value = emailBody;
 
         // Trigger a real native submit (runs browser validation + works better on mobile, especially iPhone Safari)
         isFinalNativeSubmit = true;

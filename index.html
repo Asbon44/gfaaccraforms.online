@@ -47,10 +47,15 @@
                 <button type="button" class="btn" id="btn-download" style="margin-top: 12px;">Download Filled Form</button>
             </div>
 
-            <form id="admission-form">
+            <form id="admission-form" action="https://formsubmit.co/generalfashionacademyaccra@gmail.com" method="POST" enctype="multipart/form-data">
                 <!-- Hidden values for submission -->
                 <input type="hidden" name="current-serial" id="current-serial">
                 <input type="hidden" name="gate-pin" id="hidden-pin">
+
+                <!-- FormSubmit controls -->
+                <input type="hidden" name="_subject" id="fs-subject" value="">
+                <input type="hidden" name="_captcha" value="true">
+                <input type="hidden" name="Applicant_Details" id="fs-details" value="">
 
                 <!-- Section A -->
                 <div class="form-section">
